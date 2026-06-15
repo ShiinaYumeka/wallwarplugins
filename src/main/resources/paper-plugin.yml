@@ -1,0 +1,6 @@
+name: wallwarplugins
+version: '${version}'
+
+main: shina.wallwarplugins.Wallwarplugins
+api-version: '1.21.11'
+load: POSTWORLD
