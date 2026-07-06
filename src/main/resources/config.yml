@@ -49,3 +49,11 @@ instant-heal-undead:
   weakness:
     duration-ticks: 100
     amplifier: 3
+
+# ----------------------------------------
+# 手持地图队友发光设置
+# ----------------------------------------
+team-map-glow:
+  # 触发发光效果的主手/副手物品材质
+  materials:
+    - COMPASS
