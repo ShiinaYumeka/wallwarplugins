@@ -1,6 +1,8 @@
 package shina.wallwarplugins;
 
 import org.bukkit.plugin.java.JavaPlugin;
+import shina.wallwarplugins.noquickswap.NoQuickSwapListener;
+import shina.wallwarplugins.noquickswap.NoQuickSwapNms;
 
 public final class Wallwarplugins extends JavaPlugin {
 
@@ -14,6 +16,12 @@ public final class Wallwarplugins extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new MobExpListener(this), this);
         getServer().getPluginManager().registerEvents(new FoodCooldownListener(this), this);
         getServer().getPluginManager().registerEvents(new InstantHealUndeadListener(this), this);
+
+        if (NoQuickSwapNms.init(this)) {
+            getServer().getPluginManager().registerEvents(new NoQuickSwapListener(this), this);
+        } else {
+            getLogger().warning("NoQuickSwap feature disabled due to NMS initialization failure.");
+        }
 
         if (NmsHelper.init(this)) {
             teamMapGlowManager = new TeamMapGlowManager(this);
