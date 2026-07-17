@@ -16,6 +16,7 @@ public final class Wallwarplugins extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new MobExpListener(this), this);
         getServer().getPluginManager().registerEvents(new FoodCooldownListener(this), this);
         getServer().getPluginManager().registerEvents(new InstantHealUndeadListener(this), this);
+        getServer().getPluginManager().registerEvents(new WeavingMechanicListener(this), this);
 
         if (NoQuickSwapNms.init(this)) {
             getServer().getPluginManager().registerEvents(new NoQuickSwapListener(this), this);

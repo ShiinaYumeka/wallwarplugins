@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/wallwarplugins.iml" filepath="$PROJECT_DIR$/wallwarplugins.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/wallwarplugins.iml" filepath="$PROJECT_DIR$/.idea/wallwarplugins.iml" />
     </modules>
   </component>
 </project>
