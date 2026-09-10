@@ -69,3 +69,37 @@ weaving-buff:
   fall-speed: -0.4
   # 处于蜘蛛网中时的水平移动推进力 (正数, 越大走得越快)
   horizontal-boost: 0.3
+
+# ----------------------------------------
+# 末影珍珠卡方块修复
+# ----------------------------------------
+pearl-fix:
+  # 总开关
+  enabled: true
+  # 空列表表示所有世界；例如 worlds: [world]
+  worlds: []
+  # 只在玩家身体与这些方块重叠时进行落点修正
+  protected-blocks:
+    - BEDROCK
+    - REINFORCED_DEEPSLATE
+  # 修正点距碰撞点的最大距离，单位：格；允许范围 0.5~6.0
+  max-correction-distance: 3.0
+  # 回退搜索间距，单位：格；允许范围 0.01~0.25
+  search-step: 0.025
+
+# ----------------------------------------
+# 附魔蓄力门槛
+# ----------------------------------------
+enchant-charge:
+  # 总开关
+  enabled: true
+  # true：只限制剑。false：限制主手带对应附魔的所有武器
+  swords-only: true
+  # 附魔 -> 最低蓄力 (0.0~1.0)。必须严格大于该值才触发效果。
+  # 数据包附魔对应 data/<命名空间>/enchantment/<名称>.json，配置写成 命名空间:名称
+  # 带冒号的 id 必须加引号，否则 YAML 会拆开。也可写成两层：mypack: { freeze: 0.60 }
+  # 火焰附加拦点燃；霜冻等自定义附魔会撤回本次攻击增加的冻结 tick，并取消 ATTACK 来源的药水效果
+  enchants:
+    fire_aspect: 0.60
+    freeze: 0.80
+    # "mypack:freeze": 0.60

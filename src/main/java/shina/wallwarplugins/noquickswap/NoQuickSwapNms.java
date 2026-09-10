@@ -13,9 +13,11 @@ public final class NoQuickSwapNms {
 
     private static Method craftPlayerGetHandle;
     private static Method getInventory;
+    private static Method setSelectedSlot;
     private static Field selectedField;
-    private static Method detectEquipmentUpdatesPublic;
+    private static Method detectEquipmentUpdates;
     private static Method resetAttackStrengthTicker;
+    private static Field itemSwapTickerField;
 
     private NoQuickSwapNms() {
     }
@@ -32,10 +34,33 @@ public final class NoQuickSwapNms {
             Class<?> inventoryClass = Class.forName("net.minecraft.world.entity.player.Inventory");
 
             craftPlayerGetHandle = craftPlayerClass.getMethod("getHandle");
-            getInventory = serverPlayerClass.getMethod("getInventory");
-            selectedField = inventoryClass.getField("selected");
-            detectEquipmentUpdatesPublic = livingEntityClass.getMethod("detectEquipmentUpdatesPublic");
-            resetAttackStrengthTicker = serverPlayerClass.getMethod("resetAttackStrengthTicker");
+            getInventory = findMethod(serverPlayerClass, "getInventory");
+            setSelectedSlot = findMethod(inventoryClass, int.class, "setSelectedSlot");
+            selectedField = findField(inventoryClass, int.class, "selected", "selectedSlot");
+            detectEquipmentUpdates = findMethod(
+                    livingEntityClass,
+                    "detectEquipmentUpdatesPublic",
+                    "detectEquipmentUpdates",
+                    "sendEquipmentChanges"
+            );
+            resetAttackStrengthTicker = findMethod(
+                    serverPlayerClass,
+                    "resetAttackStrengthTicker",
+                    "resetTicksSince"
+            );
+            itemSwapTickerField = findField(
+                    livingEntityClass,
+                    int.class,
+                    "itemSwapTicker",
+                    "ticksSinceHandEquipping"
+            );
+
+            if (setSelectedSlot == null && selectedField == null) {
+                throw new NoSuchFieldException("Unable to resolve inventory selected slot");
+            }
+            if (resetAttackStrengthTicker == null) {
+                throw new NoSuchMethodException("Unable to resolve resetAttackStrengthTicker");
+            }
 
             available = true;
         } catch (ReflectiveOperationException exception) {
@@ -53,8 +78,81 @@ public final class NoQuickSwapNms {
     static void applyHotbarSwap(Player player, int newSlot) throws ReflectiveOperationException {
         Object serverPlayer = craftPlayerGetHandle.invoke(player);
         Object inventory = getInventory.invoke(serverPlayer);
-        selectedField.setInt(inventory, newSlot);
-        detectEquipmentUpdatesPublic.invoke(serverPlayer);
+
+        if (setSelectedSlot != null) {
+            setSelectedSlot.invoke(inventory, newSlot);
+        } else {
+            selectedField.setInt(inventory, newSlot);
+        }
+
+        if (detectEquipmentUpdates != null) {
+            detectEquipmentUpdates.invoke(serverPlayer);
+        }
+
         resetAttackStrengthTicker.invoke(serverPlayer);
+
+        if (itemSwapTickerField != null) {
+            itemSwapTickerField.setInt(serverPlayer, 0);
+        }
+
+        player.resetCooldown();
+    }
+
+    static void applyHandSwap(Player player) throws ReflectiveOperationException {
+        Object serverPlayer = craftPlayerGetHandle.invoke(player);
+
+        if (detectEquipmentUpdates != null) {
+            detectEquipmentUpdates.invoke(serverPlayer);
+        }
+
+        resetAttackStrengthTicker.invoke(serverPlayer);
+
+        if (itemSwapTickerField != null) {
+            itemSwapTickerField.setInt(serverPlayer, 0);
+        }
+
+        player.resetCooldown();
+    }
+
+    private static Method findMethod(Class<?> type, String... names) {
+        return findMethod(type, new Class<?>[0], names);
+    }
+
+    private static Method findMethod(Class<?> type, Class<?> parameterType, String... names) {
+        return findMethod(type, new Class<?>[]{parameterType}, names);
+    }
+
+    private static Method findMethod(Class<?> type, Class<?>[] parameterTypes, String... names) {
+        for (String name : names) {
+            Class<?> current = type;
+            while (current != null && current != Object.class) {
+                try {
+                    Method method = current.getDeclaredMethod(name, parameterTypes);
+                    method.setAccessible(true);
+                    return method;
+                } catch (NoSuchMethodException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Field findField(Class<?> type, Class<?> fieldType, String... names) {
+        for (String name : names) {
+            Class<?> current = type;
+            while (current != null && current != Object.class) {
+                try {
+                    Field field = current.getDeclaredField(name);
+                    if (field.getType() == fieldType) {
+                        field.setAccessible(true);
+                        return field;
+                    }
+                } catch (NoSuchFieldException ignored) {
+                }
+                current = current.getSuperclass();
+            }
+        }
+        return null;
     }
 }
