@@ -22,6 +22,9 @@ public class TeamMapGlowListener implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!plugin.isEnabled() || !event.getPlayer().isOnline()) {
+                return;
+            }
             manager.trackPlayer(event.getPlayer());
             manager.updateViewerState(event.getPlayer());
         });
