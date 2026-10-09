@@ -1,8 +1,5 @@
 package shina.wallwarplugins;
 
-import io.netty.channel.ChannelDuplexHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPromise;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -25,8 +22,9 @@ public final class TeamMapGlowManager {
 
     private final Plugin plugin;
     private final Set<UUID> activeViewers = ConcurrentHashMap.newKeySet();
-    private final Map<UUID, ChannelDuplexHandler> handlers = new ConcurrentHashMap<>();
+    private final Map<UUID, GlowChannelHook> handlers = new ConcurrentHashMap<>();
     private final Map<Integer, Player> entityIdToPlayer = new ConcurrentHashMap<>();
+    private volatile boolean stopping;
 
     public TeamMapGlowManager(Plugin plugin) {
         this.plugin = plugin;
@@ -37,6 +35,9 @@ public final class TeamMapGlowManager {
     }
 
     public void trackPlayer(Player player) {
+        if (stopping || !plugin.isEnabled() || !player.isOnline() || !NmsHelper.isAvailable()) {
+            return;
+        }
         entityIdToPlayer.put(player.getEntityId(), player);
         injectHandler(player);
     }
@@ -48,7 +49,7 @@ public final class TeamMapGlowManager {
     }
 
     public void updateViewerState(Player player) {
-        if (!NmsHelper.isAvailable()) {
+        if (stopping || !plugin.isEnabled() || !player.isOnline() || !NmsHelper.isAvailable()) {
             return;
         }
 
@@ -61,10 +62,12 @@ public final class TeamMapGlowManager {
     }
 
     public void shutdown() {
+        stopping = true;
         for (Player player : Bukkit.getOnlinePlayers()) {
             untrackPlayer(player);
         }
         activeViewers.clear();
+        handlers.values().forEach(GlowChannelHook::close);
         handlers.clear();
         entityIdToPlayer.clear();
     }
@@ -84,7 +87,14 @@ public final class TeamMapGlowManager {
     }
 
     private void refreshTeammateGlow(Player viewer, boolean glowing) {
+        if (stopping || !plugin.isEnabled()) {
+            return;
+        }
         Bukkit.getScheduler().runTask(plugin, () -> {
+            if (stopping || !viewer.isOnline() || !plugin.isEnabled()
+                    || glowing != activeViewers.contains(viewer.getUniqueId())) {
+                return;
+            }
             for (Player teammate : getTeammates(viewer)) {
                 try {
                     byte flags = NmsHelper.getEntityFlags(teammate);
@@ -103,37 +113,36 @@ public final class TeamMapGlowManager {
             return;
         }
 
-        ChannelDuplexHandler handler = new ChannelDuplexHandler() {
-            @Override
-            public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) throws Exception {
+        GlowPacketHandler handler = new GlowPacketHandler(message -> {
                 if (!activeViewers.contains(player.getUniqueId())) {
-                    super.write(context, message, promise);
-                    return;
+                    return message;
                 }
 
                 if (NmsHelper.isEntityDataPacket(message)) {
                     Object modified = modifyEntityDataPacket(player, message);
                     if (modified != null) {
-                        NmsHelper.sendPacket(player, modified);
-                        return;
+                        return modified;
                     }
                 } else if (NmsHelper.isBundlePacket(message)) {
                     if (handleBundlePacket(player, message)) {
-                        super.write(context, message, promise);
-                        Bukkit.getScheduler().runTask(plugin, () -> refreshTeammateGlow(player, true));
-                        return;
+                        refreshTeammateGlow(player, true);
                     }
                 }
 
-                super.write(context, message, promise);
-            }
-        };
+                return message;
+        }, exception -> plugin.getLogger().warning("Glow packet rewrite skipped for " + player.getName()
+                + ": " + exception.getMessage()));
 
         try {
-            if (NmsHelper.getChannel(player).pipeline().get(HANDLER_NAME) == null) {
-                NmsHelper.getChannel(player).pipeline().addBefore("packet_handler", HANDLER_NAME, handler);
+            var channel = NmsHelper.getChannel(player);
+            if (channel == null || !channel.isOpen() || !channel.isActive()) {
+                return;
             }
-            handlers.put(player.getUniqueId(), handler);
+            var hook = new GlowChannelHook(channel, HANDLER_NAME, handler,
+                    reason -> plugin.getLogger().warning("Glow hook skipped for " + player.getName() + ": " + reason));
+            if (handlers.putIfAbsent(player.getUniqueId(), hook) == null) {
+                hook.install();
+            }
         } catch (ReflectiveOperationException exception) {
             plugin.getLogger().warning("Failed to inject glow handler for " + player.getName() + ": "
                     + exception.getMessage());
@@ -141,18 +150,9 @@ public final class TeamMapGlowManager {
     }
 
     private void removeHandler(Player player) {
-        ChannelDuplexHandler handler = handlers.remove(player.getUniqueId());
-        if (handler == null) {
-            return;
-        }
-
-        try {
-            if (NmsHelper.getChannel(player).pipeline().get(HANDLER_NAME) != null) {
-                NmsHelper.getChannel(player).pipeline().remove(HANDLER_NAME);
-            }
-        } catch (ReflectiveOperationException exception) {
-            plugin.getLogger().warning("Failed to remove glow handler for " + player.getName() + ": "
-                    + exception.getMessage());
+        GlowChannelHook hook = handlers.remove(player.getUniqueId());
+        if (hook != null) {
+            hook.close();
         }
     }
 
